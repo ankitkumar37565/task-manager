@@ -30,96 +30,49 @@ app.post("/create-user", function (req, res) {
   );
 });
 
-/* MIDDLEWARE  */
-
-// Load middleware
-app.use(bodyParser.json());
-// HEADERS MIDDLEWARE
-
-app.use(function (req, res, next) {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS, PUT, PATCH, DELETE");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-access-token, x-refresh-token, _id");
-
-  res.header(
-      'Access-Control-Expose-Headers',
-      'x-access-token, x-refresh-token'
-  );
-
-  next();
-});
-
+//get the token
+app.post("/api/login", (req, res) => {
+    //check if user exist
+    user.findById(_id).then((user) => {
+        if (!user) {
+            // user couldn't be found
+          return res.json({
+                message:'user not found',
+              });
+        }
+  //user found now create the jwt token
+    jwt.sign({ user: user }, "secretkey", { expiresIn: "1h" }, (err, token) => {
+      res.json({
+        token: token,
+      });
+    });
+  });
+  });
 
 // check whether the request has a valid JWT access token
-let authenticate = (req, res, next) => {
-  let token = req.header('x-access-token');
-
-  // verify the JWT
-  jwt.verify(token, User.getJWTSecret(), (err, decoded) => {
-      if (err) {
-          // there was an error
-          // jwt is invalid - * DO NOT AUTHENTICATE *
-          res.status(401).send(err);
-      } else {
-          // jwt is valid
-          req.user_id = decoded._id;
-          next();
-      }
-  });
-}
-
-// Verify Refresh Token Middleware (which will be verifying the session)
-let verifySession = (req, res, next) => {
-  // grab the refresh token from the request header
-  let refreshToken = req.header('x-refresh-token');
-
-  // grab the _id from the request header
-  let _id = req.header('_id');
-
-  User.findByIdAndToken(_id, refreshToken).then((user) => {
-      if (!user) {
-          // user couldn't be found
-          return Promise.reject({
-              'error': 'User not found. Make sure that the refresh token and user id are correct'
-          });
-      }
+//format of token
+//authorization: bearer <access_token>
+//verify token
+function verifyToken(req, res, next) {
+    //get auth header value
+    const bearerHeader = req.headers["authorization"];
+    //check if bearer is undefined
+    if (typeof bearerHeader !== "undefined") {
+      //split at the space
+      const bearer = bearerHeader.split(" ");
+      //get token from array
+      const bearerToken = bearer[1];
+      //set the token
+      req.token = bearerToken;
+      //next middleware
+      next();
+    } else {
+      //forbidden
+      res.sendStatus(403);
+    }
+  }
 
 
-      //  the user was found
-      // therefore the refresh token exists in the database - but we still have to check if it has expired or not
-
-      req.user_id = user._id;
-      req.userObject = user;
-      req.refreshToken = refreshToken;
-
-      let isSessionValid = false;
-
-      user.sessions.forEach((session) => {
-          if (session.token === refreshToken) {
-              // check if the session has expired
-              if (User.hasRefreshTokenExpired(session.expiresAt) === false) {
-                  // refresh token has not expired
-                  isSessionValid = true;
-              }
-          }
-      });
-
-      if (isSessionValid) {
-          // the session is VALID - call next() to continue with processing this web request
-          next();
-      } else {
-          // the session is not valid
-          return Promise.reject({
-              'error': 'Refresh token has expired or the session is invalid'
-          })
-      }
-
-  }).catch((e) => {
-      res.status(401).send(e);
-  })
-}
-
-/* END MIDDLEWARE  */
 
 
 
@@ -127,8 +80,8 @@ let verifySession = (req, res, next) => {
 * GET /projects
 * Purpose: Get all projects
 */
-app.get('/projects', authenticate, (req, res) => {
-  // We want to return an array of all the projects that belong to the authenticated user 
+app.get('/projects', verifyToken, (req, res) => {
+  // We want to return an array of all the projects that belong to the verifyToken user 
   projects.find({
       _userId: req.user_id
   }).then((projects) => {
@@ -142,7 +95,7 @@ app.get('/projects', authenticate, (req, res) => {
 * POST /projects
 * Purpose: Create a project
 */
-app.post('/projects', authenticate, (req, res) => {
+app.post('/projects', verifyToken, (req, res) => {
   // We want to create a new project and return the new project document back to the user (which includes the id)
   // The project information (fields) will be passed in via the JSON request body
   let title = req.body.title;
@@ -161,7 +114,7 @@ app.post('/projects', authenticate, (req, res) => {
 * PATCH /projects/:id
 * Purpose: Update a specified project
 */
-app.patch('/projects/:id', authenticate, (req, res) => {
+app.patch('/projects/:id', verifyToken, (req, res) => {
   // We want to update the specified project (project document with id in the URL) with the new values specified in the JSON body of the request
   project.findOneAndUpdate({ _id: req.params.id, _userId: req.user_id }, {
       $set: req.body
@@ -174,7 +127,7 @@ app.patch('/projects/:id', authenticate, (req, res) => {
 * DELETE /projects/:id
 * Purpose: Delete a project
 */
-app.delete('/projects/:id', authenticate, (req, res) => {
+app.delete('/projects/:id', verifyToken, (req, res) => {
   // We want to delete the specified project (document with id in the URL)
   project.findOneAndRemove({
       _id: req.params.id,
@@ -192,7 +145,7 @@ app.delete('/projects/:id', authenticate, (req, res) => {
 * GET /projects/:projectId/tasks
 * Purpose: Get all tasks in a specific project
 */
-app.get('/projects/:projectId/tasks', authenticate, (req, res) => {
+app.get('/projects/:projectId/tasks', verifyToken, (req, res) => {
   // We want to return all tasks that belong to a specific project (specified by projectId)
   Task.find({
       _projectId: req.params.projectId
@@ -206,7 +159,7 @@ app.get('/projects/:projectId/tasks', authenticate, (req, res) => {
 * POST /projects/:projectId/tasks
 * Purpose: Create a new task in a specific project
 */
-app.post('/projects/:projectId/tasks', authenticate, (req, res) => {
+app.post('/projects/:projectId/tasks', verifyToken, (req, res) => {
   // We want to create a new task in a project specified by projectId
 
   project.findOne({
@@ -215,7 +168,7 @@ app.post('/projects/:projectId/tasks', authenticate, (req, res) => {
   }).then((project) => {
       if (project) {
           // project object with the specified conditions was found
-          // therefore the currently authenticated user can create new tasks
+          // therefore the currently verifyTokend user can create new tasks
           return true;
       }
 
@@ -240,7 +193,7 @@ app.post('/projects/:projectId/tasks', authenticate, (req, res) => {
 * PATCH /projects/:projectId/tasks/:taskId
 * Purpose: Update an existing task
 */
-app.patch('/projects/:projectId/tasks/:taskId', authenticate, (req, res) => {
+app.patch('/projects/:projectId/tasks/:taskId', verifyToken, (req, res) => {
   // We want to update an existing task (specified by taskId)
 
   project.findOne({
@@ -249,7 +202,7 @@ app.patch('/projects/:projectId/tasks/:taskId', authenticate, (req, res) => {
   }).then((project) => {
       if (project) {
           // project object with the specified conditions was found
-          // therefore the currently authenticated user can make updates to tasks within this project
+          // therefore the currently verifyTokend user can make updates to tasks within this project
           return true;
       }
 
@@ -257,7 +210,7 @@ app.patch('/projects/:projectId/tasks/:taskId', authenticate, (req, res) => {
       return false;
   }).then((canUpdateTasks) => {
       if (canUpdateTasks) {
-          // the currently authenticated user can update tasks
+          // the currently verifyTokend user can update tasks
           Task.findOneAndUpdate({
               _id: req.params.taskId,
               _projectId: req.params.projectId
@@ -277,7 +230,7 @@ app.patch('/projects/:projectId/tasks/:taskId', authenticate, (req, res) => {
 * DELETE /projects/:projectId/tasks/:taskId
 * Purpose: Delete a task
 */
-app.delete('/projects/:projectId/tasks/:taskId', authenticate, (req, res) => {
+app.delete('/projects/:projectId/tasks/:taskId', verifyToken, (req, res) => {
 
   project.findOne({
       _id: req.params.projectId,
@@ -285,7 +238,7 @@ app.delete('/projects/:projectId/tasks/:taskId', authenticate, (req, res) => {
   }).then((project) => {
       if (project) {
           // project object with the specified conditions was found
-          // therefore the currently authenticated user can make updates to tasks within this project
+          // therefore the currently verifyTokend user can make updates to tasks within this project
           return true;
       }
 
@@ -372,19 +325,9 @@ app.post('/users/login', (req, res) => {
 })
 
 
-/**
-* GET /users/me/access-token
-* Purpose: generates and returns an access token
-*/
-app.get('/users/me/access-token', verifySession, (req, res) => {
-  // we know that the user/caller is authenticated and we have the user_id and user object available to us
-  req.userObject.generateAccessAuthToken().then((accessToken) => {
-      res.header('x-access-token', accessToken).send({ accessToken });
-  }).catch((e) => {
-      res.status(400).send(e);
-  });
-})
 
+
+  
 
 
 /* HELPER METHODS */
