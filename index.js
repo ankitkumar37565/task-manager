@@ -2,6 +2,7 @@ const express = require("express");
 const app = express();
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
+const jwt = require("jsonwebtoken");
 //load middleware
 app.use(bodyParser.json());
 //connecting to database
@@ -9,101 +10,92 @@ require("./db/mongoose")();
 //load the mongoose models
 const { task } = require("./db/models/task");
 const { project } = require("./db/models/project");
+const { user } = require("./db/models/user");
 //load the project routes
 
 /**
  * GET /projects
  * Purpose: Get all projects
  */
-app.get(
-  "/projects",
-  /*authenticate*/ (req, res) => {
-    // We want to return an array of all the projects that belong to the authenticated user
-    project
-      .find({
-        _userId: req.user_id,
-      })
-      .then((projects) => {
-        res.send(projects);
-      })
-      .catch((e) => {
-        res.send(e);
-      });
-  }
-);
+app.get("/projects", /*authenticate*/ verifyToken, (req, res) => {
+  // We want to return an array of all the projects that belong to the authenticated user
+  project
+    .find({
+      _userId: req.user_id,
+    })
+    .then((projects) => {
+      res.send(projects);
+    })
+    .catch((e) => {
+      res.send(e);
+    });
+});
 
 /**
  * POST /projects
  * Purpose: Create a project
  */
-app.post(
-  "/projects",
-  /*authenticate*/ (req, res) => {
-    // We want to create a new project and return the new project document back to the user (which includes the id)
-    // The project information (fields) will be passed in via the JSON request body
-    let title = req.body.title;
+app.post("/projects", /*authenticate*/ verifyToken, (req, res) => {
+  // We want to create a new project and return the new project document back to the user (which includes the id)
+  // The project information (fields) will be passed in via the JSON request body
+  let title = req.body.title;
 
-    let newproject = new project({
-      title,
-      _userId: req.user_id,
-    });
-    newproject.save().then((projectDoc) => {
-      // the full project document is returned (incl. id)
-      res.send(projectDoc);
-    });
-  }
-);
+  let newproject = new project({
+    title,
+    _userId: req.user_id,
+  });
+  newproject.save().then((projectDoc) => {
+    // the full project document is returned (incl. id)
+    res.send(projectDoc);
+  });
+});
 
 /**
  * PATCH /projects/:id
  * Purpose: Update a specified project
  */
-app.patch(
-  "/projects/:id",
-  /*authenticate*/ (req, res) => {
-    // We want to update the specified project (project document with id in the URL) with the new values specified in the JSON body of the request
-    project
-      .findOneAndUpdate(
-        { _id: req.params.id, _userId: req.user_id },
-        {
-          $set: req.body,
-        }
-      )
-      .then(() => {
-        res.send({ message: "updated successfully" });
-      });
-  }
-);
+app.patch("/projects/:id", /*authenticate*/ verifyToken, (req, res) => {
+  // We want to update the specified project (project document with id in the URL) with the new values specified in the JSON body of the request
+  project
+    .findOneAndUpdate(
+      { _id: req.params.id, _userId: req.user_id },
+      {
+        $set: req.body,
+      }
+    )
+    .then(() => {
+      res.send({ message: "updated successfully" });
+    });
+});
 
 /**
  * DELETE /projects/:id
  * Purpose: Delete a project
  */
-app.delete(
-  "/projects/:id",
-  /*authenticate*/ (req, res) => {
-    // We want to delete the specified project (document with id in the URL)
-    project
-      .findOneAndRemove({
-        _id: req.params.id,
-        _userId: req.user_id,
-      })
-      .then((removedprojectDoc) => {
-        res.send(removedprojectDoc);
+app.delete("/projects/:id", /*authenticate*/ verifyToken, (req, res) => {
+  // We want to delete the specified project (document with id in the URL)
+  project
+    .findOneAndRemove({
+      _id: req.params.id,
+      _userId: req.user_id,
+    })
+    .then((removedprojectDoc) => {
+      res.send(removedprojectDoc);
 
-        // delete all the tasks that are in the deleted project
-        // deletetasksFromproject(removedprojectDoc._id);
-      });
-  }
-);
+      // delete all the tasks that are in the deleted project
+      // deletetasksFromproject(removedprojectDoc._id);
+    });
+});
 /* HELPER METHODS */
 let deletetasksFromproject = (_listId) => {
-  task.deleteMany({
-      _listId
-  }).then(() => {
+  task
+    .deleteMany({
+      _listId,
+    })
+    .then(() => {
       console.log("tasks from " + _listId + " were deleted!");
-  })
-}
+    });
+};
 
 //load the task routes
 /**
@@ -112,13 +104,16 @@ let deletetasksFromproject = (_listId) => {
  */
 app.get(
   "/projects/:projectId/tasks",
-  /*authenticate*/ (req, res) => {
+  /*authenticate*/ verifyToken,
+  (req, res) => {
     // We want to return all tasks that belong to a specific project (specified by projectId)
-    task.find({
-      _projectId: req.params.projectId,
-    }).then((tasks) => {
-      res.send(tasks);
-    });
+    task
+      .find({
+        _projectId: req.params.projectId,
+      })
+      .then((tasks) => {
+        res.send(tasks);
+      });
   }
 );
 
@@ -128,7 +123,8 @@ app.get(
  */
 app.post(
   "/projects/:projectId/tasks",
-  /*authenticate*/ (req, res) => {
+  /*authenticate*/ verifyToken,
+  (req, res) => {
     // We want to create a new task in a project specified by projectId
 
     project
@@ -168,7 +164,8 @@ app.post(
  */
 app.patch(
   "/projects/:projectId/tasks/:taskId",
-  /*authenticate*/ (req, res) => {
+  /*authenticate*/ verifyToken,
+  (req, res) => {
     // We want to update an existing task (specified by taskId)
 
     project
@@ -189,17 +186,19 @@ app.patch(
       .then((canUpdatetasks) => {
         if (canUpdatetasks) {
           // the currently authenticated user can update tasks
-          task.findOneAndUpdate(
-            {
-              _id: req.params.taskId,
-              _projectId: req.params.projectId,
-            },
-            {
-              $set: req.body,
-            }
-          ).then(() => {
-            res.send({ message: "Updated successfully." });
-          });
+          task
+            .findOneAndUpdate(
+              {
+                _id: req.params.taskId,
+                _projectId: req.params.projectId,
+              },
+              {
+                $set: req.body,
+              }
+            )
+            .then(() => {
+              res.send({ message: "Updated successfully." });
+            });
         } else {
           res.sendStatus(404);
         }
@@ -213,7 +212,8 @@ app.patch(
  */
 app.delete(
   "/projects/:projectId/tasks/:taskId",
-  /*authenticate*/ (req, res) => {
+  /*authenticate*/ verifyToken,
+  (req, res) => {
     project
       .findOne({
         _id: req.params.projectId,
@@ -231,24 +231,65 @@ app.delete(
       })
       .then((canDeletetasks) => {
         if (canDeletetasks) {
-          task.findOneAndRemove({
-            _id: req.params.taskId,
-            _projectId: req.params.projectId,
-          }).then((removedtaskDoc) => {
-            res.send(removedtaskDoc);
-          });
+          task
+            .findOneAndRemove({
+              _id: req.params.taskId,
+              _projectId: req.params.projectId,
+            })
+            .then((removedtaskDoc) => {
+              res.send(removedtaskDoc);
+            });
         } else {
           res.sendStatus(404);
         }
       });
   }
 );
-
 //end task routes
 
-app.get("/", (req, res) => {
-  res.send(`hello world`);
+//user routes
+//signup user
+app.post("/signup", (req, res) => {
+  let email = req.body.email;
+  let password = req.body.password;
+  let role = req.body.role;
+  let newuser = new user({
+    email,
+    password,
+    role,
+    // _userId:req.user_id
+  });
+  newuser.save().then((userdoc) => {
+    res.send(userdoc);
+  });
 });
+//login
+app.post("/login", (req, res) => {
+  let email = req.body.email;
+  let password = req.body.password;
+  let role = req.body.role;
+
+  let newuser = new user({
+    email,
+    password,
+    role,
+  });
+  jwt.sign({ user }, "secretkey", { expiresIn: "15s" }, (err, token) => {
+    res.json({ token });
+  });
+});
+function verifyToken(req, res, next) {
+  const bearerHeader = req.headers["authorization"];
+  if (typeof bearerHeader !== "undefined") {
+    const bearer = bearerHeader.split(" ");
+    const bearerToken = bearer[1];
+    req.token = bearerToken;
+    next();
+  } else {
+    res.sendStatus(403);
+  }
+}
+//start the app on port 3000
 app.listen(3000, () => {
   console.log(`server listening on port 3000`);
 });
