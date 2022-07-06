@@ -11,11 +11,13 @@ const UserSchema = new mongoose.Schema({
   password: {
     type: String,
     required: true,
-    minlength: 8,
+    minlength: 1,
   },
   role: { type: String, enum: ["user", "manager"], default: "user" },
+
+accessToken:{type:String}
 });
 
-const user = mongoose.model("user", UserSchema);
+const User = mongoose.model("User", UserSchema);
 
-module.exports = { user };
+module.exports = User;

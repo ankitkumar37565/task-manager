@@ -1,0 +1,32 @@
+@Base_Url=http://localhost:3000
+@Auth_Token=afafadfasfasfasfasfas
+
+get {{Base_Url}}/users
+
+x-access-token: {{ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2MmM1MTkxZjNkNzJjZjJhMzQyMjNjMDIiLCJpYXQiOjE2NTcwOTk3MjcsImV4cCI6MTY1NzE4NjEyN30.wvCzQ3YvOl2qTsX-GY_eS6IUQh0F6UIgvXnfvrP-Qa8 }}
+###
+
+post {{Base_Url}}/signup
+Content-Type: application/json
+
+{
+    "email":"ankit3@gmail.com",
+    "password":"ankit",
+     "role":"user"
+}
+
+###
+
+post {{Base_Url}}/login
+Content-Type: application/json
+
+{
+    "email":"ankit3@gmail.com",
+    "password":"ankit",
+     "role":"user"
+}
+
+###
+GET {{Base_Url}}/userss
+
+###
